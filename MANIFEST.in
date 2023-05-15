@@ -2,6 +2,7 @@ global-exclude *
 
 include setup.py
 include curlinate.py
+include curlinate_bullshit_to_work_around_setuptools_being_awful.py
 
 include go.mod
 include go.sum
