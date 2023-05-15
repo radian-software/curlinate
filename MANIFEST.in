@@ -1,0 +1,8 @@
+global-exclude *
+
+include setup.py
+include curlinate.py
+
+include go.mod
+include go.sum
+include curlinate.go

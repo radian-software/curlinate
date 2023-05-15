@@ -1,0 +1,5 @@
+*.egg-info
+/curlinate
+__pycache__
+build
+dist
