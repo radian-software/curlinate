@@ -121,6 +121,9 @@ import curlinate
 
 resp = curlinate.post("https://httpbin.org/post", headers={
   "X-Foobar": "Quux",
+}, cookies={
+  "auth-token": "l3tm3in",
+  "goog-random-personal-data-for-the-hivemind": "...",
 }, params={
   "q": "some query parameter",
 }, data="some nonsense for the body")

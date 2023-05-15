@@ -60,6 +60,7 @@ def request(
     *,
     data: (bytes | dict[str, str]) = b"",
     headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
     params: dict[str, str] = {},
 ):
     if isinstance(data, dict):
@@ -69,6 +70,12 @@ def request(
                 **headers,
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             }
+    if cookies:
+        if CaseInsensitiveDict(headers).get("cookie"):
+            raise RuntimeError(
+                "can't use extra cookies with request that already has cookie header"
+            )
+        headers["Cookie"] = "; ".join(f"{key}={val}" for key, val in cookies.items())
     if params:
         if "?" in url:
             raise RuntimeError(
@@ -109,13 +116,22 @@ def delete(
     *,
     data: (bytes | dict[str, str]) = b"",
     headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
     params: dict[str, str] = {},
 ):
-    return request("DELETE", url, data=data, headers=headers, params=params)
+    return request(
+        "DELETE", url, data=data, headers=headers, cookies=cookies, params=params
+    )
 
 
-def get(url, *, headers: dict[str, str] = {}, params: dict[str, str] = {}):
-    return request("GET", url, headers=headers, params=params)
+def get(
+    url,
+    *,
+    headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
+    params: dict[str, str] = {},
+):
+    return request("GET", url, headers=headers, cookies=cookies, params=params)
 
 
 def patch(
@@ -123,9 +139,12 @@ def patch(
     *,
     data: (bytes | dict[str, str]) = b"",
     headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
     params: dict[str, str] = {},
 ):
-    return request("PATCH", url, data=data, headers=headers, params=params)
+    return request(
+        "PATCH", url, data=data, headers=headers, cookies=cookies, params=params
+    )
 
 
 def post(
@@ -133,9 +152,12 @@ def post(
     *,
     data: (bytes | dict[str, str]) = b"",
     headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
     params: dict[str, str] = {},
 ):
-    return request("POST", url, data=data, headers=headers, params=params)
+    return request(
+        "POST", url, data=data, headers=headers, cookies=cookies, params=params
+    )
 
 
 def put(
@@ -143,6 +165,9 @@ def put(
     *,
     data: (bytes | dict[str, str]) = b"",
     headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
     params: dict[str, str] = {},
 ):
-    return request("PUT", url, data=data, headers=headers, params=params)
+    return request(
+        "PUT", url, data=data, headers=headers, cookies=cookies, params=params
+    )

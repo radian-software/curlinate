@@ -33,6 +33,7 @@ They support arguments/options (where appropriate):
 * `url`
 * `data`
 * `headers`
+* `cookies`
 * `params`
 
 They return a response dataclass with fields:
