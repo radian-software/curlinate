@@ -10,6 +10,7 @@
 # entire many-hour journey. And https://pypa-build.readthedocs.io/en/stable/
 # is great too.
 
+import base64
 import hashlib
 import os
 import pathlib
@@ -80,7 +81,7 @@ def hash_file(fname: os.PathLike):
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             h.update(chunk)
-    return h.hexdigest()
+    return base64.urlsafe_b64encode(h.digest()).decode().rstrip("=")
 
 
 def build_wheel(wheel_directory, *_, editable=False):
@@ -121,7 +122,7 @@ Tag: {TAG}
                 + "\n"
             )
         with open(dist_info / "RECORD", "w") as f:
-            for item in walk(dist_info):
+            for item in walk(workdir):
                 if not item.is_file():
                     continue
                 if item.name == "RECORD":
@@ -129,13 +130,14 @@ Tag: {TAG}
                 f.write(
                     ",".join(
                         [
-                            str(item.relative_to(dist_info)),
-                            hash_file(item),
+                            str(item.relative_to(workdir)),
+                            "sha256=" + hash_file(item),
                             str(item.stat().st_size),
                         ]
                     )
                     + "\n"
                 )
+            f.write(f"{dist_info.relative_to(workdir)}/RECORD,,\n")
         zip_base = pathlib.Path(wheel_directory) / f"curlinate-{VERSION}-{TAG}"
         shutil.make_archive(str(zip_base), "zip", workdir)
         # No way to set the output filename for shutil, must rename
