@@ -13,6 +13,7 @@
 import hashlib
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -82,15 +83,31 @@ def hash_file(fname: os.PathLike):
     return h.hexdigest()
 
 
-def build_wheel(wheel_directory, *_):
+def build_wheel(wheel_directory, *_, editable=False):
     with tempfile.TemporaryDirectory() as tmpdir:
         workdir = pathlib.Path(tmpdir)
         dist_info = workdir / f"curlinate-{VERSION}.dist-info"
         dist_info.mkdir()
-        shutil.copy("curlinate.py", workdir / "curlinate.py")
         scripts_dir = workdir / f"curlinate-{VERSION}.data" / "scripts"
         scripts_dir.mkdir(parents=True)
-        subprocess.run(["go", "build", "-o", scripts_dir / "curlinate", "."])
+        if editable:
+            with open(workdir / "curlinate_editable.pth", "w") as f:
+                f.write(os.getcwd() + "\n")
+            subprocess.run(["go", "build", "."], check=True)
+            with open(scripts_dir / "curlinate", "w") as f:
+                f.write(
+                    f"""
+#!/bin/sh
+exec {shlex.quote(os.getcwd())}/curlinate "$@"
+                """.strip()
+                    + "\n"
+                )
+            (scripts_dir / "curlinate").chmod(0o755)
+        else:
+            shutil.copy("curlinate.py", workdir / "curlinate.py")
+            subprocess.run(
+                ["go", "build", "-o", scripts_dir / "curlinate", "."], check=True
+            )
         with open(dist_info / "METADATA", "w") as f:
             f.write(_get_pkg_info())
         with open(dist_info / "WHEEL", "w") as f:
@@ -127,3 +144,7 @@ Tag: {TAG}
         whl_path = zip_base.with_name(zip_base.name + ".whl")
         zip_path.rename(whl_path)
         return whl_path.name
+
+
+def build_editable(wheel_directory, *args, **kwargs):
+    return build_wheel(wheel_directory, *args, **kwargs, editable=True)
