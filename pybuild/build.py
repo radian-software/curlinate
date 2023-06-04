@@ -6,9 +6,9 @@
 # it with Poetry, that managed to be even worse.
 #
 # I will say the folks who wrote https://peps.python.org/pep-0517/ did
-# a great job though. That was the only sane document I read in this
-# entire many-hour journey. And https://pypa-build.readthedocs.io/en/stable/
-# is great too.
+# an amazing job though. That was the only sane document I read in this
+# entire many-hour journey. https://pypa-build.readthedocs.io/en/stable/
+# is great too, and https://peps.python.org/pep-0660/ is eminently reasonable.
 
 import base64
 import hashlib
