@@ -2,6 +2,7 @@ import base64
 from collections.abc import Mapping, MutableMapping
 from collections import OrderedDict
 from dataclasses import dataclass
+import os
 import re
 import subprocess
 import urllib.parse
@@ -47,11 +48,26 @@ class CaseInsensitiveDict(MutableMapping):
         return str(dict(self.items()))
 
 
+class HTTPError(Exception):
+    def __init__(self, msg, response):
+        super().__init__(msg)
+        self.response = response
+
+
 @dataclass
 class Response:
     status_code: int
     headers: CaseInsensitiveDict
     content: bytes
+
+    def raise_for_status(self):
+        if 400 < self.status_code < 600:
+            raise HTTPError(f"{self.status_code} Server Error", response=self)
+
+    @property
+    def text(self):
+        # Todo: decode using appropriate content type from response
+        return self.content.decode()
 
 
 def request(
@@ -62,7 +78,12 @@ def request(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
+    if not (ja3 or os.environ.get("JA3")):
+        raise RuntimeError(
+            "need to specify ja3 keyword argument or set JA3 environment variable"
+        )
     if isinstance(data, dict):
         data = urllib.parse.urlencode(data).encode()
         if not CaseInsensitiveDict(headers).get("content-type"):
@@ -75,7 +96,10 @@ def request(
             raise RuntimeError(
                 "can't use extra cookies with request that already has cookie header"
             )
-        headers["Cookie"] = "; ".join(f"{key}={val}" for key, val in cookies.items())
+        headers = {
+            **headers,
+            "Cookie": "; ".join(f"{key}={val}" for key, val in cookies.items()),
+        }
     if params:
         if "?" in url:
             raise RuntimeError(
@@ -90,6 +114,7 @@ def request(
             url,
             *[f"-H{key}: {value}" for key, value in headers.items()],
             *(["--body", base64.b64encode(data), "--body-base64"] if data else []),
+            *(["--ja3", ja3] if ja3 else []),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -118,9 +143,16 @@ def delete(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
     return request(
-        "DELETE", url, data=data, headers=headers, cookies=cookies, params=params
+        "DELETE",
+        url,
+        data=data,
+        headers=headers,
+        cookies=cookies,
+        params=params,
+        ja3=ja3,
     )
 
 
@@ -130,8 +162,16 @@ def get(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
-    return request("GET", url, headers=headers, cookies=cookies, params=params)
+    return request(
+        "GET",
+        url,
+        headers=headers,
+        cookies=cookies,
+        params=params,
+        ja3=ja3,
+    )
 
 
 def patch(
@@ -141,9 +181,16 @@ def patch(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
     return request(
-        "PATCH", url, data=data, headers=headers, cookies=cookies, params=params
+        "PATCH",
+        url,
+        data=data,
+        headers=headers,
+        cookies=cookies,
+        params=params,
+        ja3=ja3,
     )
 
 
@@ -154,9 +201,16 @@ def post(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
     return request(
-        "POST", url, data=data, headers=headers, cookies=cookies, params=params
+        "POST",
+        url,
+        data=data,
+        headers=headers,
+        cookies=cookies,
+        params=params,
+        ja3=ja3,
     )
 
 
@@ -167,7 +221,14 @@ def put(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
+    ja3: str = "",
 ):
     return request(
-        "PUT", url, data=data, headers=headers, cookies=cookies, params=params
+        "PUT",
+        url,
+        data=data,
+        headers=headers,
+        cookies=cookies,
+        params=params,
+        ja3=ja3,
     )

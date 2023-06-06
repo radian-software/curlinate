@@ -35,6 +35,7 @@ They support arguments/options (where appropriate):
 * `headers`
 * `cookies`
 * `params`
+* `ja3`
 
 They return a response dataclass with fields:
 
