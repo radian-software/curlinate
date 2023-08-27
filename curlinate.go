@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,7 +75,7 @@ func mainE() error {
 	parsedBody := []byte(args.Body)
 	if args.BodyBase64 {
 		encoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(parsedBody))
-		parsedBody, err = ioutil.ReadAll(encoder)
+		parsedBody, err = io.ReadAll(encoder)
 		if err != nil {
 			return err
 		}
@@ -84,7 +84,7 @@ func mainE() error {
 		Method: args.Method,
 		URL:    parsedURL,
 		Header: parsedHeaders,
-		Body:   ioutil.NopCloser(bytes.NewReader(parsedBody)),
+		Body:   io.NopCloser(bytes.NewReader(parsedBody)),
 	}
 	if ja3, ok := presets[args.JA3]; ok {
 		args.JA3 = ja3
@@ -105,7 +105,7 @@ func mainE() error {
 			fmt.Fprintf(os.Stderr, "header %s: %s\n", key, val)
 		}
 	}
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
