@@ -109,6 +109,7 @@ func mainE() error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	fmt.Fprintf(os.Stderr, "body %d bytes\n", len(respBody))
 	fmt.Printf("%s", respBody)
 	return nil
