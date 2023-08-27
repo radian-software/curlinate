@@ -313,7 +313,8 @@ class Session:
         if not line:
             try:
                 error = (
-                    self.proc.stderr.readlines()[-1].decode().strip() or "unknown error"
+                    self.proc.stderr.read().decode().strip().splitlines()[-1].strip()
+                    or "unknown error"
                 )
             except Exception:
                 error = "unknown error"
