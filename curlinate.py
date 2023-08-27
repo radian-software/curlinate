@@ -2,9 +2,11 @@ import base64
 from collections.abc import Mapping, MutableMapping
 from collections import OrderedDict
 from dataclasses import dataclass
+import json
 import os
 import re
 import subprocess
+from typing import Tuple
 import urllib.parse
 
 
@@ -70,16 +72,15 @@ class Response:
         return self.content.decode()
 
 
-def request(
-    method,
-    url,
-    *,
-    data: (bytes | dict[str, str]) = b"",
-    headers: dict[str, str] = {},
-    cookies: dict[str, str] = {},
-    params: dict[str, str] = {},
-    ja3: str = "",
-):
+def _fixup_request_args(
+    method: str,
+    url: str,
+    data: bytes | dict[str, str],
+    headers: dict[str, str],
+    cookies: dict[str, str],
+    params: dict[str, str],
+    ja3: str,
+) -> Tuple[str, str, bytes, dict[str, str], dict[str, str], dict[str, str], str]:
     if not (ja3 or os.environ.get("JA3")):
         raise RuntimeError(
             "need to specify ja3 keyword argument or set JA3 environment variable"
@@ -106,6 +107,23 @@ def request(
                 "can't use extra query params with url that already has query string"
             )
         url += "?" + urllib.parse.urlencode(params)
+    method = method.upper()
+    return method, url, data, headers, cookies, params, ja3
+
+
+def request(
+    method,
+    url,
+    *,
+    data: (bytes | dict[str, str]) = b"",
+    headers: dict[str, str] = {},
+    cookies: dict[str, str] = {},
+    params: dict[str, str] = {},
+    ja3: str = "",
+):
+    method, url, data, headers, cookies, params, ja3 = _fixup_request_args(
+        method, url, data, headers, cookies, params, ja3
+    )
     result = subprocess.run(
         [
             "curlinate",
@@ -118,6 +136,7 @@ def request(
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        check=True,
     )
     stdout = result.stdout
     stderr = result.stderr.decode()
@@ -232,3 +251,167 @@ def put(
         params=params,
         ja3=ja3,
     )
+
+
+class Session:
+    def __init__(self):
+        self.proc = subprocess.Popen(
+            ["curlinate", "multiple"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+
+    def __del__(self):
+        assert self.proc.stdin
+        self.proc.kill()
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self):
+        self.__del__()
+
+    def request(
+        self,
+        method,
+        url,
+        *,
+        data: (bytes | dict[str, str]) = b"",
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        method, url, data, headers, cookies, params, ja3 = _fixup_request_args(
+            method, url, data, headers, cookies, params, ja3
+        )
+        assert self.proc.stdin
+        assert self.proc.stdout
+        assert self.proc.stderr
+        self.proc.stdin.write(
+            json.dumps(
+                {
+                    "url": url,
+                    "method": method,
+                    "headers": [f"{key}: {value}" for key, value in headers.items()],
+                    **({"body_base64": base64.b64encode(data)} if data else {}),
+                    "ja3": ja3,
+                }
+            ).encode()
+            + b"\n"
+        )
+        line = self.proc.stdout.readline()
+        if not line:
+            try:
+                error = self.proc.stderr.readlines()[-1].decode().strip()
+            except Exception:
+                error = "unknown error"
+            raise RuntimeError(f"got error from curlinate subprocess: {error}")
+        resp = json.loads(line)
+        resp_headers = CaseInsensitiveDict()
+        for header in resp["headers"]:
+            key, value = header.split(": ", maxsplit=1)
+            resp_headers[key] = value
+        return Response(
+            resp["status"], resp_headers, base64.b64decode(resp["body_base64"])
+        )
+
+    def delete(
+        self,
+        url,
+        *,
+        data: (bytes | dict[str, str]) = b"",
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        return self.request(
+            "DELETE",
+            url,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            params=params,
+            ja3=ja3,
+        )
+
+    def get(
+        self,
+        url,
+        *,
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        return self.request(
+            "GET",
+            url,
+            headers=headers,
+            cookies=cookies,
+            params=params,
+            ja3=ja3,
+        )
+
+    def patch(
+        self,
+        url,
+        *,
+        data: (bytes | dict[str, str]) = b"",
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        return self.request(
+            "PATCH",
+            url,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            params=params,
+            ja3=ja3,
+        )
+
+    def post(
+        self,
+        url,
+        *,
+        data: (bytes | dict[str, str]) = b"",
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        return self.request(
+            "POST",
+            url,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            params=params,
+            ja3=ja3,
+        )
+
+    def put(
+        self,
+        url,
+        *,
+        data: (bytes | dict[str, str]) = b"",
+        headers: dict[str, str] = {},
+        cookies: dict[str, str] = {},
+        params: dict[str, str] = {},
+        ja3: str = "",
+    ):
+        return self.request(
+            "PUT",
+            url,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            params=params,
+            ja3=ja3,
+        )

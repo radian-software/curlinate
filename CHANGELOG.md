@@ -17,9 +17,11 @@ The Go binary has arguments/options:
 * `--body`
 * `--body-base64`
 * `--ja3` (required)
+* `multiple`
 
-The Python package has methods:
+The Python package has classes/methods:
 
+* `Session`
 * `request`
 * `delete`
 * `get`

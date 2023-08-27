@@ -69,7 +69,7 @@ A subset of curl syntax is provided:
 ```
 % curlinate https://...
     [--ja3 fingerprint-or-shorthand]
-    [-X METHOD]
+    [-X, --method METHOD]
     [-H "Your-Header: Some value"]...
     [--body "raw request body"]
     [--body-base64]
@@ -110,6 +110,32 @@ body 277 bytes
 In the case of any other data being printed on stderr, it will be a
 fatal error and a non-zero exit status will be returned.
 
+### Multiple requests
+
+Some use cases require reusing the same TCP connection for multiple
+requests. This is supported by the command-line tool albeit in a more
+awkward manner. Pass a single argument `multiple` to start Curlinate
+in multi-request mode. In this mode you submit requests as single-line
+JSON messages to stdin, and get the results back in the same format on
+stdout. The normal output format described above is not used.
+Concurrent requests are not supported, but if keep-alive is configured
+and a subsequent request uses the same JA3 and would be routed to the
+same IP, then the existing connection is reused.
+
+In multi-request mode, the following keys are supported in request
+JSON: `url` (string, same as `--url`), `method` (string, same as
+`--method`), `headers` (array of strings, same `Key: value` syntax as
+`--headers`), `body` (string, must be UTF-8), `body_base64` (string,
+base64 encoded, can be binary), `ja3` (string, same as `--ja3`). Here
+is an example request:
+
+```json
+{"url":"https://www.google.com","ja3":"chrome_78"}
+```
+
+The response JSON has the keys `status` (integer), `headers` (array of
+strings, `Key: value`), and `body_base64`.
+
 ### Python interface
 
 The Python package exposes a similar interface to that of
@@ -139,6 +165,18 @@ The implementation is just invoking the command-line utility in a
 subprocess and parsing the output. It is impossible to make the
 request from pure Python because the standard library does not offer
 sufficient control over the network stack.
+
+You can also reuse connections with the Session interface, note
+however that other features of Session from Requests (such as tracking
+cookies) are not supported and you must do this manually:
+
+```
+import curlinate
+
+with curlinate.Session() as s:
+    resp1 = s.get("https://httpbin.org/get")
+    resp2 = s.post("https://httpbin.org/post")
+```
 
 ## Thanks to
 
