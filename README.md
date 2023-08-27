@@ -178,6 +178,9 @@ with curlinate.Session() as s:
     resp2 = s.post("https://httpbin.org/post")
 ```
 
+As a convenience you can pass a `ja3` argument to the `Session`
+constructor; this will be used as a default for calls on that session.
+
 ## Thanks to
 
 * [ja3transport](https://github.com/CUCyber/ja3transport), implements

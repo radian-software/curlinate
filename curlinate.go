@@ -35,9 +35,9 @@ type argsType struct {
 }
 
 type sessionResp struct {
-	Status     int      `json:"status"`
-	Headers    []string `json:"headers"`
-	BodyBase64 []byte   `json:"body_base64"`
+	Status  int      `json:"status"`
+	Headers []string `json:"headers"`
+	Body    []byte   `json:"body"`
 }
 
 func getMapKeys(m map[string]string) []string {
@@ -170,9 +170,9 @@ func mainE(args *argsType) error {
 			}
 		}
 		msg, err := json.Marshal(sessionResp{
-			Status:     resp.StatusCode,
-			Headers:    headers,
-			BodyBase64: respBody,
+			Status:  resp.StatusCode,
+			Headers: headers,
+			Body:    respBody,
 		})
 		if err != nil {
 			return err

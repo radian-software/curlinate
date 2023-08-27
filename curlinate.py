@@ -254,7 +254,7 @@ def put(
 
 
 class Session:
-    def __init__(self):
+    def __init__(self, ja3: str | None = None):
         self.proc = subprocess.Popen(
             ["curlinate", "multiple"],
             stdin=subprocess.PIPE,
@@ -262,15 +262,16 @@ class Session:
             stderr=subprocess.PIPE,
             bufsize=0,
         )
+        self.ja3 = ja3 or ""
 
     def __del__(self):
         assert self.proc.stdin
         self.proc.kill()
 
     def __enter__(self):
-        pass
+        return self
 
-    def __exit__(self):
+    def __exit__(self, *_):
         self.__del__()
 
     def request(
@@ -284,6 +285,8 @@ class Session:
         params: dict[str, str] = {},
         ja3: str = "",
     ):
+        if not ja3:
+            ja3 = self.ja3
         method, url, data, headers, cookies, params, ja3 = _fixup_request_args(
             method, url, data, headers, cookies, params, ja3
         )
@@ -296,7 +299,11 @@ class Session:
                     "url": url,
                     "method": method,
                     "headers": [f"{key}: {value}" for key, value in headers.items()],
-                    **({"body_base64": base64.b64encode(data)} if data else {}),
+                    **(
+                        {"body": base64.b64encode(data).decode(), "body_base64": True}
+                        if data
+                        else {}
+                    ),
                     "ja3": ja3,
                 }
             ).encode()
@@ -314,9 +321,7 @@ class Session:
         for header in resp["headers"]:
             key, value = header.split(": ", maxsplit=1)
             resp_headers[key] = value
-        return Response(
-            resp["status"], resp_headers, base64.b64decode(resp["body_base64"])
-        )
+        return Response(resp["status"], resp_headers, base64.b64decode(resp["body"]))
 
     def delete(
         self,
