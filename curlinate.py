@@ -312,7 +312,9 @@ class Session:
         line = self.proc.stdout.readline()
         if not line:
             try:
-                error = self.proc.stderr.readlines()[-1].decode().strip()
+                error = (
+                    self.proc.stderr.readlines()[-1].decode().strip() or "unknown error"
+                )
             except Exception:
                 error = "unknown error"
             raise RuntimeError(f"got error from curlinate subprocess: {error}")
