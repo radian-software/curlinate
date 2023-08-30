@@ -79,7 +79,7 @@ func mainE(args *argsType) error {
 	}
 	clienthello := []byte{}
 	if args.ClientHello != "" {
-		encoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(os.Getenv("CLIENTHELLO"))))
+		encoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(args.ClientHello)))
 		var err error
 		clienthello, err = io.ReadAll(encoder)
 		if err != nil {
