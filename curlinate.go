@@ -123,7 +123,9 @@ func mainE(args *argsType) error {
 		var tlsSpec *tls.ClientHelloSpec
 		if len(clienthello) > 0 {
 			tlsId = tls.HelloCustom
-			tlsFingerprinter := &tls.Fingerprinter{}
+			tlsFingerprinter := &tls.Fingerprinter{
+				AllowBluntMimicry: true,
+			}
 			tlsSpec, err = tlsFingerprinter.FingerprintClientHello(clienthello)
 			if err != nil {
 				return err

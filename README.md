@@ -46,16 +46,16 @@ elect to install the Python package. There are no other dependencies.
 ## Usage
 
 First, obtain the TLS ClientHello packet whose fingerprint you would
-like to forge. The most straightforward way to do this is to monitor
-your network traffic with Wireshark and identify the appropriate
-packet by IP address. If you are reverse engineering a mobile
-application then one option is to use
-[Wireguard](https://www.wireguard.com/) to force device traffic to be
-forwarded through your laptop acting as a router. In any case, copy
-the raw ClientHello packet contents and convert the binary to base64
-format. This is the input to Curlinate which tells it the fingerprint
-you wish to spoof. Note that Curlinate will not send the exact same
-ClientHello; instead, it will use
+like to forge. (Not the whole network packet - just the TLS layer.)
+The most straightforward way to do this is to monitor your network
+traffic with Wireshark and identify the appropriate packet by IP
+address. If you are reverse engineering a mobile application then one
+option is to use [Wireguard](https://www.wireguard.com/) to force
+device traffic to be forwarded through your laptop acting as a router.
+In any case, copy the raw ClientHello packet contents and convert the
+binary to base64 format. This is the input to Curlinate which tells it
+the fingerprint you wish to spoof. Note that Curlinate will not send
+the exact same ClientHello; instead, it will use
 [utls](https://github.com/refraction-networking/utls) to synthesize a
 new packet appropriate to the connection your application is making,
 but with the same fingerprint.
