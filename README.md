@@ -13,8 +13,9 @@ available.
 
 Curlinate offers no technical innovation, simply convenience. I
 developed it because I found that existing forgery tools were clumsy
-and hard to use (e.g.: no command-line usage, no Python library, no
-support for JA3).
+and hard to use. I wanted something that would require no custom code
+to integrate into an application: just call it like `curl` or Python
+`requests`, and provide the TLS fingerprint to forge as a parameter.
 
 ## Status
 
@@ -44,23 +45,20 @@ elect to install the Python package. There are no other dependencies.
 
 ## Usage
 
-First, obtain the
-[JA3](https://engineering.salesforce.com/tls-fingerprinting-with-ja3-and-ja3s-247362855967/)
-string of the client whose TLS fingerprint you would like to forge.
-There are several options. You can obtain a fingerprint from an
-existing application or from a public database, or you can record your
-own by capturing network packets with e.g. Wireshark and extracting
-JA3 strings with e.g.
-[pyJA3](https://github.com/salesforce/ja3/tree/master/python).
-
-Some predefined JA3 strings are included built in Curlinate for
-convenience. Instead of your own JA3 string, you can provide one of
-these shorthands to use a built-in JA3:
-
-* `chrome_78`
-  (`769,47-53-5-10-49161-49162-49171-49172-50-56-19-4,0-10-11,23-24-25,0`)
-* `safari_604_1`
-  (`771,4865-4866-4867-49196-49195-49188-49187-49162-49161-52393-49200-49199-49192-49191-49172-49171-52392-157-156-61-60-53-47-49160-49170-10,65281-0-23-13-5-18-16-11-51-45-43-10-21,29-23-24-25,0`)
+First, obtain the TLS ClientHello packet whose fingerprint you would
+like to forge. The most straightforward way to do this is to monitor
+your network traffic with Wireshark and identify the appropriate
+packet by IP address. If you are reverse engineering a mobile
+application then one option is to use
+[Wireguard](https://www.wireguard.com/) to force device traffic to be
+forwarded through your laptop acting as a router. In any case, copy
+the raw ClientHello packet contents and convert the binary to base64
+format. This is the input to Curlinate which tells it the fingerprint
+you wish to spoof. Note that Curlinate will not send the exact same
+ClientHello; instead, it will use
+[utls](https://github.com/refraction-networking/utls) to synthesize a
+new packet appropriate to the connection your application is making,
+but with the same fingerprint.
 
 ### Command-line utility
 
@@ -68,16 +66,17 @@ A subset of curl syntax is provided:
 
 ```
 % curlinate https://...
-    [--ja3 fingerprint-or-shorthand]
+    [--clienthello "some raw packet in base64"]
     [-X, --method METHOD]
-    [-H "Your-Header: Some value"]...
+    [-H, --header "Your-Header: Some value"]...
     [--body "raw request body"]
     [--body-base64]
 ```
 
-Providing `--ja3` is required; there is no default. You can also
-specify this option using the environment variable `JA3` instead, if
-that is easier.
+If you do not provide `--clienthello` then a default TLS fingerprint
+is used (no guarantee is made about which one). You can also specify
+this parameter using the environment variable `CLIENTHELLO` (same
+base64 format) if that is easier.
 
 As with curl, the method defaults to GET. If you provide a request
 body then this does not automatically change the method to POST,
@@ -92,7 +91,8 @@ UTF-8), then you should base64-encode it for `--body` and add
 The validation for `-H` is more strict than in curl; the colon and
 following space are both required.
 
-Generally speaking, assume `curlinate` is not as good as curl.
+Generally speaking, assume `curlinate` is not as featureful as curl so
+you should not be surprised if a feature is missing or limited.
 
 ### Output format
 
@@ -118,19 +118,32 @@ awkward manner. Pass a single argument `multiple` to start Curlinate
 in multi-request mode. In this mode you submit requests as single-line
 JSON messages to stdin, and get the results back in the same format on
 stdout. The normal output format described above is not used.
-Concurrent requests are not supported, but if keep-alive is configured
-and a subsequent request uses the same JA3 and would be routed to the
-same IP, then the existing connection is reused.
+Concurrent requests are not supported, but you can have concurrent
+connections open simultaneously.
 
-In multi-request mode, the following keys are supported in request
-JSON: `url` (string, same as `--url`), `method` (string, same as
-`--method`), `headers` (array of strings, same `Key: value` syntax as
-`--headers`), `body` (string, must be UTF-8), `body_base64` (string,
-base64 encoded, can be binary), `ja3` (string, same as `--ja3`). Here
-is an example request:
+In multi-request mode, you have access to the same options but they
+are passed as JSON keys instead of command-line arguments:
+
+* `https://...` becomes `"url": "https://..."`
+* `--clienthello "some raw packet in base64"` becomes `"clienthello":
+  "some raw packet in base64"`
+* `-X, --method METHOD` becomes `"method": "METHOD"`
+* `-H, --header "Your-Header: Some value"...` becomes `"headers":
+  ["Your-Header: Some values", ...]`
+* `--body "raw request body"` becomes `"body": "raw request body"`
+* `--body-base64` becomes `"body_base64": true`
+
+In multi-request mode there is a new option supported as well, the
+`conn_id` key. This is an optional string. When it is omitted the
+behavior is as normal. With `conn_id` as a non-empty string, the
+connection is left open after the request completes, and if you submit
+a following request with the same value for `conn_id`, then it will
+reuse the same connection. (You must ensure that the connection can be
+reused for the subsequent request, so for example it must be a request
+to the same host.)
 
 ```json
-{"url":"https://www.google.com","ja3":"chrome_78"}
+{"url":"https://www.google.com","clienthello":"..."}
 ```
 
 The response JSON has the keys `status` (integer), `headers` (array of
@@ -152,14 +165,16 @@ resp = curlinate.post("https://httpbin.org/post", headers={
   "goog-random-personal-data-for-the-hivemind": "...",
 }, params={
   "q": "some query parameter",
-}, data="some nonsense for the body")
+}, data="some nonsense for the body", clienthello="...")
 print(resp.status_code, resp.headers, resp.content)
 ```
 
 The interface is minimal, so only the keyword arguments and attributes
-are supported at present (along with the other common http request
-verbs, and the generic `request` method that takes a `method`
-argument).
+shown above are supported at present (along with the other common http
+request verbs, and the generic `request` method that takes a `method`
+argument). The only addition to the Requests interface is the
+`clienthello` option (you can also use the `CLIENTHELLO` environment
+variable as a default).
 
 The implementation is just invoking the command-line utility in a
 subprocess and parsing the output. It is impossible to make the
@@ -170,7 +185,7 @@ You can also reuse connections with the Session interface, note
 however that other features of Session from Requests (such as tracking
 cookies) are not supported and you must do this manually:
 
-```
+```python
 import curlinate
 
 with curlinate.Session() as s:
@@ -178,14 +193,23 @@ with curlinate.Session() as s:
     resp2 = s.post("https://httpbin.org/post")
 ```
 
-As a convenience you can pass a `ja3` argument to the `Session`
-constructor; this will be used as a default for calls on that session.
+As a convenience you can pass a `clienthello` argument to the
+`Session` constructor; this will be used as a default for calls on
+that session. Note that there is no support for intelligent connection
+pooling; unlike with Requests, all requests submitted in the same
+`Session` *must* be routable on the same TCP connection. In addition,
+`Session` objects do not handle cookie management or other state; they
+are solely a way to expose the ability to force multiple requests to
+use the same connection in case this is required for an application.
+Cookies can still be handled manually.
 
 ## Thanks to
 
-* [ja3transport](https://github.com/CUCyber/ja3transport), implements
-  the actual logic of parsing JA3 strings and creating http requests
-  to their specifications
+* [ja3transport](https://github.com/CUCyber/ja3transport), used in the
+  original implementation although I since moved away from JA3 due to
+  limitations
+* [utls](https://github.com/refraction-networking/utls), powers all of
+  the actual complexity with regard to TLS
 * [kong](https://github.com/alecthomas/kong), command-line argument
   parsing
 

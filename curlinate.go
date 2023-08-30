@@ -8,30 +8,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 
-	"github.com/CUCyber/ja3transport"
 	"github.com/alecthomas/kong"
+	"github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
-var presets = map[string]string{
-	"chrome_78":    "769,47-53-5-10-49161-49162-49171-49172-50-56-19-4,0-10-11,23-24-25,0",
-	"safari_604_1": "771,4865-4866-4867-49196-49195-49188-49187-49162-49161-52393-49200-49199-49192-49191-49172-49171-52392-157-156-61-60-53-47-49160-49170-10,65281-0-23-13-5-18-16-11-51-45-43-10-21,29-23-24-25,0",
-}
-
 type argsType struct {
-	URL        string   `arg:"" help:"Fully qualified URL to contact" required:"" json:"url"`
-	Method     string   `short:"X" name:"method" help:"HTTP method to use" default:"GET" json:"method"`
-	Headers    []string `sep:"none" short:"H" name:"header" help:"Additional http headers in format 'Header: Value'" json:"headers"`
-	Body       string   `name:"body" help:"Request body, must be UTF-8 due to limitation in argument parser" json:"body"`
-	BodyBase64 bool     `name:"body-base64" help:"Assume request body is base64 encoded, so null bytes can be used" json:"body_base64"`
-	JA3        string   `name:"ja3" help:"Raw JA3 fingerprint to forge, or name of existing preset" env:"JA3" required:"" json:"ja3"`
-	multiple   bool
-	useJson    bool
+	URL         string   `arg:"" help:"Fully qualified URL to contact" required:"" json:"url"`
+	Method      string   `short:"X" name:"method" help:"HTTP method to use" default:"GET" json:"method"`
+	Headers     []string `sep:"none" short:"H" name:"header" help:"Additional http headers in format 'Header: Value'" json:"headers"`
+	Body        string   `name:"body" help:"Request body, must be UTF-8 due to limitation in argument parser" json:"body"`
+	BodyBase64  bool     `name:"body-base64" help:"Assume request body is base64 encoded, so null bytes can be used" json:"body_base64"`
+	ClientHello string   `name:"clienthello" help:"Base64 encoded raw ClientHello message to emulate" env:"CLIENTHELLO" json:"clienthello"`
+	ConnId      string   `kong:"-" json:"conn_id"`
+	multiple    bool
+	useJson     bool
 }
 
 type sessionResp struct {
@@ -48,23 +45,7 @@ func getMapKeys(m map[string]string) []string {
 	return keys
 }
 
-func isValidJA3(ja3 string) bool {
-	parts := strings.Split(ja3, ",")
-	if len(parts) != 5 {
-		return false
-	}
-	for _, part := range parts {
-		subparts := strings.Split(part, "-")
-		for _, subpart := range subparts {
-			if _, err := strconv.Atoi(subpart); err != nil {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-var savedClients = map[string]*ja3transport.JA3Client{}
+var savedConns = map[string]*tls.UConn{}
 
 func mainE(args *argsType) error {
 	// First check if we are in session mode, if so, read new args
@@ -91,10 +72,18 @@ func mainE(args *argsType) error {
 	if args.URL == "" {
 		return errors.New("url is required")
 	}
-	if args.JA3 == "" {
-		args.JA3 = os.Getenv("JA3")
-		if args.JA3 == "" {
-			return errors.New("ja3 is required")
+	// Kong doesn't seem to want to read bytes as base64 like
+	// json, so we have to do it manually
+	if args.ClientHello == "" {
+		args.ClientHello = os.Getenv("CLIENTHELLO")
+	}
+	clienthello := []byte{}
+	if args.ClientHello != "" {
+		encoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(os.Getenv("CLIENTHELLO"))))
+		var err error
+		clienthello, err = io.ReadAll(encoder)
+		if err != nil {
+			return err
 		}
 	}
 	// Proceed to main logic
@@ -102,6 +91,7 @@ func mainE(args *argsType) error {
 	if err != nil {
 		return err
 	}
+	// Parse the headers into a map
 	parsedHeaders := http.Header{}
 	for _, header := range args.Headers {
 		splits := strings.SplitN(header, ": ", 2)
@@ -115,6 +105,7 @@ func mainE(args *argsType) error {
 	if err != nil {
 		return err
 	}
+	// Parse the body into a byte array
 	parsedBody := []byte(args.Body)
 	if args.BodyBase64 {
 		encoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(parsedBody))
@@ -123,28 +114,90 @@ func mainE(args *argsType) error {
 			return err
 		}
 	}
-	req := http.Request{
+	var tlsConn *tls.UConn = nil
+	if args.ConnId != "" {
+		tlsConn = savedConns[args.ConnId]
+	}
+	if tlsConn == nil {
+		var tlsId tls.ClientHelloID
+		var tlsSpec *tls.ClientHelloSpec
+		if len(clienthello) > 0 {
+			tlsId = tls.HelloCustom
+			tlsFingerprinter := &tls.Fingerprinter{}
+			tlsSpec, err = tlsFingerprinter.FingerprintClientHello(clienthello)
+			if err != nil {
+				return err
+			}
+		} else {
+			tlsId = tls.HelloFirefox_56
+			tlsSpec = nil
+		}
+		if parsedURL.Scheme != "https" {
+			return fmt.Errorf("unsupported scheme %s, only https is allowed", parsedURL.Scheme)
+		}
+		host := parsedURL.Host
+		if !strings.Contains(host, ":") {
+			host += ":443"
+		}
+		tcpConn, err := net.Dial("tcp", host)
+		if err != nil {
+			return err
+		}
+		tlsConfig := tls.Config{ServerName: parsedURL.Hostname()}
+		tlsConn = tls.UClient(tcpConn, &tlsConfig, tlsId)
+		if tlsSpec != nil {
+			err = tlsConn.ApplyPreset(tlsSpec)
+			if err != nil {
+				return err
+			}
+		}
+		err = tlsConn.Handshake()
+		if err != nil {
+			return err
+		}
+		if args.ConnId == "" {
+			defer tlsConn.Close()
+		} else {
+			savedConns[args.ConnId] = tlsConn
+		}
+	}
+	req := &http.Request{
 		Method: args.Method,
 		URL:    parsedURL,
 		Header: parsedHeaders,
 		Body:   io.NopCloser(bytes.NewReader(parsedBody)),
 	}
-	if ja3, ok := presets[args.JA3]; ok {
-		args.JA3 = ja3
-	} else if !isValidJA3(args.JA3) {
-		return fmt.Errorf("not a valid JA3 string or a known preset: %s (valid presets: %s)", args.JA3, strings.Join(getMapKeys(presets), ", "))
-	}
-	client, ok := savedClients[args.JA3]
-	if !ok {
-		client, err = ja3transport.NewWithString(args.JA3)
+	var resp *http.Response
+	alpn := tlsConn.HandshakeState.ServerHello.AlpnProtocol
+	switch alpn {
+	case "h2":
+		req.Proto = "HTTP/2.0"
+		req.ProtoMajor = 2
+		req.ProtoMinor = 0
+
+		tr := http2.Transport{}
+		clientConn, err := tr.NewClientConn(tlsConn)
 		if err != nil {
 			return err
 		}
-		savedClients[args.JA3] = client
-	}
-	resp, err := client.Do(&req)
-	if err != nil {
-		return err
+		resp, err = clientConn.RoundTrip(req)
+		if err != nil {
+			return err
+		}
+	case "http/1.1", "":
+		req.Proto = "HTTP/1.1"
+		req.ProtoMajor = 1
+		req.ProtoMinor = 1
+		err := req.Write(tlsConn)
+		if err != nil {
+			return err
+		}
+		resp, err = http.ReadResponse(bufio.NewReader(tlsConn), req)
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unexpected ALPN: %s", alpn)
 	}
 	if !args.useJson {
 		fmt.Fprintf(os.Stderr, "status %s\n", resp.Status)
