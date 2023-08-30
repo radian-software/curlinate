@@ -164,10 +164,11 @@ func mainE(args *argsType) error {
 		}
 	}
 	req := &http.Request{
-		Method: args.Method,
-		URL:    parsedURL,
-		Header: parsedHeaders,
-		Body:   io.NopCloser(bytes.NewReader(parsedBody)),
+		Method:        args.Method,
+		URL:           parsedURL,
+		Header:        parsedHeaders,
+		Body:          io.NopCloser(bytes.NewReader(parsedBody)),
+		ContentLength: int64(len(parsedBody)),
 	}
 	var resp *http.Response
 	alpn := tlsConn.HandshakeState.ServerHello.AlpnProtocol
