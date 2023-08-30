@@ -3,7 +3,6 @@ from collections.abc import Mapping, MutableMapping
 from collections import OrderedDict
 from dataclasses import dataclass
 import json
-import os
 import re
 import subprocess
 from typing import Tuple
@@ -79,12 +78,8 @@ def _fixup_request_args(
     headers: dict[str, str],
     cookies: dict[str, str],
     params: dict[str, str],
-    ja3: str,
+    clienthello: str,
 ) -> Tuple[str, str, bytes, dict[str, str], dict[str, str], dict[str, str], str]:
-    if not (ja3 or os.environ.get("JA3")):
-        raise RuntimeError(
-            "need to specify ja3 keyword argument or set JA3 environment variable"
-        )
     if isinstance(data, dict):
         data = urllib.parse.urlencode(data).encode()
         if not CaseInsensitiveDict(headers).get("content-type"):
@@ -108,7 +103,7 @@ def _fixup_request_args(
             )
         url += "?" + urllib.parse.urlencode(params)
     method = method.upper()
-    return method, url, data, headers, cookies, params, ja3
+    return method, url, data, headers, cookies, params, clienthello
 
 
 def request(
@@ -119,10 +114,10 @@ def request(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
-    method, url, data, headers, cookies, params, ja3 = _fixup_request_args(
-        method, url, data, headers, cookies, params, ja3
+    method, url, data, headers, cookies, params, clienthello = _fixup_request_args(
+        method, url, data, headers, cookies, params, clienthello
     )
     result = subprocess.run(
         [
@@ -132,7 +127,7 @@ def request(
             url,
             *[f"-H{key}: {value}" for key, value in headers.items()],
             *(["--body", base64.b64encode(data), "--body-base64"] if data else []),
-            *(["--ja3", ja3] if ja3 else []),
+            *(["--clienthello", clienthello] if clienthello else []),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -162,7 +157,7 @@ def delete(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
     return request(
         "DELETE",
@@ -171,7 +166,7 @@ def delete(
         headers=headers,
         cookies=cookies,
         params=params,
-        ja3=ja3,
+        clienthello=clienthello,
     )
 
 
@@ -181,7 +176,7 @@ def get(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
     return request(
         "GET",
@@ -189,7 +184,7 @@ def get(
         headers=headers,
         cookies=cookies,
         params=params,
-        ja3=ja3,
+        clienthello=clienthello,
     )
 
 
@@ -200,7 +195,7 @@ def patch(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
     return request(
         "PATCH",
@@ -209,7 +204,7 @@ def patch(
         headers=headers,
         cookies=cookies,
         params=params,
-        ja3=ja3,
+        clienthello=clienthello,
     )
 
 
@@ -220,7 +215,7 @@ def post(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
     return request(
         "POST",
@@ -229,7 +224,7 @@ def post(
         headers=headers,
         cookies=cookies,
         params=params,
-        ja3=ja3,
+        clienthello=clienthello,
     )
 
 
@@ -240,7 +235,7 @@ def put(
     headers: dict[str, str] = {},
     cookies: dict[str, str] = {},
     params: dict[str, str] = {},
-    ja3: str = "",
+    clienthello: str = "",
 ):
     return request(
         "PUT",
@@ -249,12 +244,12 @@ def put(
         headers=headers,
         cookies=cookies,
         params=params,
-        ja3=ja3,
+        clienthello=clienthello,
     )
 
 
 class Session:
-    def __init__(self, ja3: str | None = None):
+    def __init__(self, clienthello: str | None = None):
         self.proc = subprocess.Popen(
             ["curlinate", "multiple"],
             stdin=subprocess.PIPE,
@@ -262,7 +257,7 @@ class Session:
             stderr=subprocess.PIPE,
             bufsize=0,
         )
-        self.ja3 = ja3 or ""
+        self.clienthello = clienthello or ""
 
     def __del__(self):
         assert self.proc.stdin
@@ -283,12 +278,12 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
-        if not ja3:
-            ja3 = self.ja3
-        method, url, data, headers, cookies, params, ja3 = _fixup_request_args(
-            method, url, data, headers, cookies, params, ja3
+        if not clienthello:
+            clienthello = self.clienthello
+        method, url, data, headers, cookies, params, clienthello = _fixup_request_args(
+            method, url, data, headers, cookies, params, clienthello
         )
         assert self.proc.stdin
         assert self.proc.stdout
@@ -304,7 +299,8 @@ class Session:
                         if data
                         else {}
                     ),
-                    "ja3": ja3,
+                    "clienthello": clienthello,
+                    "conn_id": "curlinate",
                 }
             ).encode()
             + b"\n"
@@ -334,7 +330,7 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
         return self.request(
             "DELETE",
@@ -343,7 +339,7 @@ class Session:
             headers=headers,
             cookies=cookies,
             params=params,
-            ja3=ja3,
+            clienthello=clienthello,
         )
 
     def get(
@@ -353,7 +349,7 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
         return self.request(
             "GET",
@@ -361,7 +357,7 @@ class Session:
             headers=headers,
             cookies=cookies,
             params=params,
-            ja3=ja3,
+            clienthello=clienthello,
         )
 
     def patch(
@@ -372,7 +368,7 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
         return self.request(
             "PATCH",
@@ -381,7 +377,7 @@ class Session:
             headers=headers,
             cookies=cookies,
             params=params,
-            ja3=ja3,
+            clienthello=clienthello,
         )
 
     def post(
@@ -392,7 +388,7 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
         return self.request(
             "POST",
@@ -401,7 +397,7 @@ class Session:
             headers=headers,
             cookies=cookies,
             params=params,
-            ja3=ja3,
+            clienthello=clienthello,
         )
 
     def put(
@@ -412,7 +408,7 @@ class Session:
         headers: dict[str, str] = {},
         cookies: dict[str, str] = {},
         params: dict[str, str] = {},
-        ja3: str = "",
+        clienthello: str = "",
     ):
         return self.request(
             "PUT",
@@ -421,5 +417,5 @@ class Session:
             headers=headers,
             cookies=cookies,
             params=params,
-            ja3=ja3,
+            clienthello=clienthello,
         )
