@@ -131,10 +131,12 @@ def request(
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=True,
     )
     stdout = result.stdout
-    stderr = result.stderr.decode()
+    stderr = result.stderr.decode().strip().splitlines()[-1].strip()
+    if result.returncode != 0:
+        error = stderr or f"exit status {result.returncode}"
+        raise RuntimeError(f"got error from curlinate subprocess: {error}")
     status_code_match = re.search(r"(?m)^status ([0-9]+)", stderr)
     try:
         if not status_code_match:
