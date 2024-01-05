@@ -2,6 +2,8 @@ import base64
 from collections.abc import Mapping, MutableMapping
 from collections import OrderedDict
 from dataclasses import dataclass
+import gzip
+import io
 import json
 import re
 import subprocess
@@ -67,8 +69,12 @@ class Response:
 
     @property
     def text(self):
-        # Todo: decode using appropriate content type from response
-        return self.content.decode()
+        content = self.content
+        if self.headers.get("content-encoding") == "gzip":
+            with gzip.open(io.BytesIO(content)) as f:
+                content = f.read()
+        # Todo: decode using appropriate charset from content type
+        return content.decode()
 
 
 def _fixup_request_args(
