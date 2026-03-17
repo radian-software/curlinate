@@ -63,18 +63,29 @@ class Response:
     headers: CaseInsensitiveDict
     content: bytes
 
+    @property
+    def ok(self):
+        return not (400 < self.status_code < 600)
+
     def raise_for_status(self):
-        if 400 < self.status_code < 600:
+        if not self.ok:
             raise HTTPError(f"{self.status_code} Server Error", response=self)
 
     @property
-    def text(self):
+    def _content(self):
         content = self.content
         if self.headers.get("content-encoding") == "gzip":
             with gzip.open(io.BytesIO(content)) as f:
                 content = f.read()
+        return content
+
+    @property
+    def text(self):
         # Todo: decode using appropriate charset from content type
-        return content.decode()
+        return self._content.decode()
+
+    def json(self):
+        return json.loads(self._content)
 
 
 def _fixup_request_args(
