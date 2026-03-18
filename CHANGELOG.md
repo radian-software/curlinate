@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+Dependency updates.
+
 ## 0.0.1
 
 Initial version. Offers Go binary and Python package (which compiles
